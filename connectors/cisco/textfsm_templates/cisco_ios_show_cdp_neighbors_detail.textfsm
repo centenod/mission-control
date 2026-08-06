@@ -3,6 +3,8 @@ Value MGMT_IP (\d+\.\d+\.\d+\.\d+)
 Value PLATFORM (.+?)
 Value LOCAL_INTERFACE (\S+)
 Value NEIGHBOR_INTERFACE (\S+)
+# SOFTWARE_VERSION pattern ([^,\s]+) excludes commas and whitespace because some IOS versions
+# end with a comma (e.g., "17.9.4a, RELEASE...") while others end with just the version (e.g., "17.03.05")
 Value SOFTWARE_VERSION ([^,\s]+)
 Value DUPLEX (\S+)
 

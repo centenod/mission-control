@@ -1,4 +1,3 @@
-from io import StringIO
 from pathlib import Path
 
 import textfsm
@@ -44,7 +43,7 @@ def parse_cdp_neighbors_detail(raw_text: str, local_device_serial: str, hop: int
             b_device_ip=row["MGMT_IP"] or None,
         )
         for row in rows
-        if row["DEST_HOST"]  # Filter out incomplete records
+        if row["DEST_HOST"]  # TextFSM fires an implicit EOF Record after the trailing "Management address(es): / IP address:" line at end-of-file with no preceding "Device ID:" line to populate DEST_HOST — filter out that synthetic empty-DEST_HOST artifact
     ]
 
 
