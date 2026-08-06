@@ -1,0 +1,12 @@
+Value LOCAL_INTERFACE (\S+)
+Value CHASSIS_ID (\S+)
+Value NEIGHBOR_INTERFACE (\S+)
+Value SYSTEM_NAME (\S+)
+Value MGMT_IP (\d+\.\d+\.\d+\.\d+)
+
+Start
+  ^Local Intf:\s+${LOCAL_INTERFACE}
+  ^Chassis id:\s+${CHASSIS_ID}
+  ^Port id:\s+${NEIGHBOR_INTERFACE}
+  ^System Name:\s+${SYSTEM_NAME}
+  ^\s+IP:\s+${MGMT_IP} -> Record

@@ -1,0 +1,18 @@
+Cisco IOS XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 17.9.4a, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Thu 10-Aug-23 12:34 by mcpre
+
+ROM: IOS-XE ROMMON
+
+sw01 uptime is 10 weeks, 2 days, 4 hours, 12 minutes
+Uptime for this control processor is 10 weeks, 2 days, 4 hours, 14 minutes
+System returned to ROM by Reload Command
+System restarted at 09:12:45 UTC Mon Jun 1 2026
+System image file is "flash:cat3k_caa-universalk9.SPA.17.09.04a.SSA.bin"
+
+...
+
+Model number                       : WS-C3850-24T
+System serial number                : FCW2140L0GH

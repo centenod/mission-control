@@ -1,0 +1,16 @@
+------------------------------------------------
+Local Intf: Gi0/1
+Chassis id: aabb.cc00.0200
+Port id: Gi0/2
+Port Description: GigabitEthernet0/2
+System Name: sw02.lab.local
+
+System Description:
+Cisco IOS Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 17.9.4a
+
+Time remaining: 108 seconds
+System Capabilities: B,R
+Enabled Capabilities: B,R
+Management Addresses:
+    IP: 10.0.0.2
+Auto Negotiation - supported, enabled

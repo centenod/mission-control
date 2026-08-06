@@ -1,0 +1,15 @@
+Value DEST_HOST (\S+)
+Value MGMT_IP (\d+\.\d+\.\d+\.\d+)
+Value PLATFORM (.+?)
+Value LOCAL_INTERFACE (\S+)
+Value NEIGHBOR_INTERFACE (\S+)
+Value SOFTWARE_VERSION ([^,\s]+)
+Value DUPLEX (\S+)
+
+Start
+  ^Device ID:\s+${DEST_HOST}
+  ^\s+IP address:\s+${MGMT_IP}
+  ^Platform:\s+(?:cisco\s+)?${PLATFORM},\s+Capabilities
+  ^Interface:\s+${LOCAL_INTERFACE},\s+Port ID \(outgoing port\):\s+${NEIGHBOR_INTERFACE}
+  ^Cisco IOS.*Software.*Version\s+${SOFTWARE_VERSION}
+  ^Duplex:\s+${DUPLEX} -> Record
