@@ -97,7 +97,9 @@ def test_crawl_buckets_unreachable_devices(mock_resolve, mock_cdp, mock_lldp):
 @patch("crawler.crawl.connector.get_cdp_neighbors")
 @patch("crawler.crawl.connector.resolve_device")
 def test_crawl_resumes_from_existing_visited_and_links_state(mock_resolve, mock_cdp, mock_lldp):
-    existing_visited = {"S1": _facts("S1", "sw01")}
+    existing_s1 = _facts("S1", "sw01")
+    existing_s1.primary_ip4 = "10.0.0.1"  # matches the seed IP below — must be deduped, not re-resolved
+    existing_visited = {"S1": existing_s1}
     existing_links = [NeighborLink(a_device_serial="S1", a_interface="Gi0/1", b_device_hostname="sw02",
                                     b_interface="Gi0/2", protocol="cdp", discovered_via_hop=0, source="restconf")]
     mock_resolve.return_value = ConnectResult(status="ok", credential=CRED,
@@ -105,11 +107,39 @@ def test_crawl_resumes_from_existing_visited_and_links_state(mock_resolve, mock_
     mock_cdp.return_value = []
     mock_lldp.return_value = []
 
-    result = crawl([("10.0.0.2", 1)], max_hops=3, credential_sets=[CRED],
+    result = crawl([("10.0.0.1", 0), ("10.0.0.2", 1)], max_hops=3, credential_sets=[CRED],
                     visited=existing_visited, links=existing_links)
 
     assert set(result.visited) == {"S1", "S2"}
     assert len(result.links) == 1  # existing link preserved, no new ones added
+    assert mock_resolve.call_count == 1  # 10.0.0.1 already known — not re-resolved
+    assert mock_resolve.call_args_list[0].args[0] == "10.0.0.2"
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_skips_neighbor_expansion_for_already_known_serial(mock_resolve, mock_cdp, mock_lldp):
+    # Same physical device reachable via two different management IPs
+    # (multi-homed device, or discovered as a neighbor from two directions).
+    # Both IPs must be resolved to learn the serial, but CDP/LLDP expansion
+    # should only happen once — the second pass is redundant work.
+    result_a = ConnectResult(status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf")
+    result_b = ConnectResult(status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf")
+    mock_resolve.side_effect = [result_a, result_b]
+
+    link = NeighborLink(a_device_serial="S1", a_interface="Gi0/1", b_device_hostname="sw02",
+                         b_interface="Gi0/2", protocol="cdp", discovered_via_hop=0, source="restconf")
+    mock_cdp.return_value = [link]
+    mock_lldp.return_value = []
+
+    result = crawl([("10.0.0.1", 0), ("10.0.0.9", 0)], max_hops=3, credential_sets=[CRED])
+
+    assert set(result.visited) == {"S1"}
+    assert mock_resolve.call_count == 2  # both IPs get resolved — identity isn't known until then
+    assert mock_cdp.call_count == 1  # but neighbor expansion happens only once
+    assert mock_lldp.call_count == 1
+    assert result.links == [link]  # no duplicate links from the redundant second pass
 
 
 @patch("crawler.crawl.connector.get_lldp_neighbors")

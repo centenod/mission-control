@@ -49,8 +49,16 @@ def crawl(
             facts.primary_ip4 = ip
             facts.comments = f"Reached with user: {result.credential.username}"
             facts.custom_fields["discovery_credential_user"] = result.credential.username
+            already_known_serial = facts.serial in visited
             visited[facts.serial] = facts
             known_ips.add(ip)
+
+            if already_known_serial:
+                # Same physical device reached via a second management IP
+                # (multi-homed / discovered from two neighbors) — its links
+                # were already captured the first time we processed it, so
+                # skip the redundant CDP/LLDP round-trips and re-expansion.
+                continue
 
             new_links = connector.get_cdp_neighbors(
                 ip, result.credential, facts.serial, hop
