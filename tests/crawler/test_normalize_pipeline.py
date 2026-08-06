@@ -25,6 +25,62 @@ def test_apply_normalization_updates_facts_in_place(mock_normalize):
 
 
 @patch("crawler.normalize_pipeline.normalize_device_fields")
+def test_apply_normalization_stashes_the_raw_device_reported_hostname(mock_normalize):
+    mock_normalize.return_value = NormalizedDeviceFields(
+        hostname="sw02", manufacturer="Cisco", model="m", confidence=0.9
+    )
+    visited = {"S1": _facts("S1", "SW02.lab.local", "m")}
+
+    apply_normalization(visited)
+
+    assert visited["S1"].custom_fields["raw_hostname"] == "SW02.lab.local"
+
+
+@patch("crawler.normalize_pipeline.normalize_device_fields")
+def test_apply_normalization_leaves_manufacturer_untouched(mock_normalize):
+    # AI normalization is scoped to hostname and model only — vendor is a
+    # Cisco-only constant here and must never be an LLM's decision.
+    mock_normalize.return_value = NormalizedDeviceFields(
+        hostname="sw02", manufacturer="CISCO SYSTEMS INC", model="m", confidence=0.9
+    )
+    visited = {"S1": _facts("S1", "sw02", "m")}
+
+    apply_normalization(visited)
+
+    assert visited["S1"].manufacturer == "Cisco"
+
+
+@patch("crawler.normalize_pipeline.normalize_device_fields")
+def test_apply_normalization_survives_an_exception_from_the_ai_layer(mock_normalize):
+    # A completed multi-hop crawl must never be discarded because enrichment
+    # blew up (e.g. a missing prompt file inside ai.normalize._build_prompt).
+    mock_normalize.side_effect = FileNotFoundError("prompts/normalize-device.md")
+    visited = {"S1": _facts("S1", "SW02.lab.local", "cisco m")}
+
+    apply_normalization(visited)
+
+    assert visited["S1"].name == "SW02.lab.local"  # raw values kept
+    assert visited["S1"].manufacturer == "Cisco"
+    assert visited["S1"].model == "cisco m"
+    assert visited["S1"].custom_fields["needs_review"] is True
+    assert visited["S1"].custom_fields["normalization_confidence"] == 0.0
+
+
+@patch("crawler.normalize_pipeline.normalize_device_fields")
+def test_apply_normalization_continues_to_remaining_devices_after_one_raises(mock_normalize):
+    mock_normalize.side_effect = [
+        RuntimeError("boom"),
+        NormalizedDeviceFields(hostname="sw02", manufacturer="Cisco", model="m", confidence=1.0),
+    ]
+    visited = {"S1": _facts("S1", "sw01", "m"), "S2": _facts("S2", "SW02.lab.local", "m")}
+
+    apply_normalization(visited)
+
+    assert visited["S1"].custom_fields["needs_review"] is True
+    assert visited["S2"].name == "sw02"
+
+
+@patch("crawler.normalize_pipeline.normalize_device_fields")
 def test_apply_normalization_flags_needs_review_when_ai_falls_back(mock_normalize):
     mock_normalize.return_value = NormalizedDeviceFields(
         hostname="sw02.lab.local", manufacturer="Cisco", model="cisco m",
