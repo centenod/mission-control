@@ -20,6 +20,16 @@ def test_derive_interfaces_dedupes_same_local_interface_seen_in_multiple_links()
     assert len(interfaces) == 1
 
 
+def test_derive_interfaces_covers_both_ends_of_a_cable_recorded_from_both_sides():
+    # One physical cable, recorded independently by each device it connects.
+    # Only the local ("a") side of a link becomes an InterfaceFacts, so both
+    # recordings are needed to cover both ends — which is why discover.py must
+    # call this BEFORE reconcile_links collapses them into a single link.
+    links = [_link("S1", "Gi0/1"), _link("S2", "Gi0/2")]
+    interfaces = derive_interfaces(links)
+    assert {(i.device_serial, i.name) for i in interfaces} == {("S1", "Gi0/1"), ("S2", "Gi0/2")}
+
+
 def test_derive_interfaces_sets_device_serial_and_source():
     links = [_link("S1", "Gi0/1", source="ssh")]
     interfaces = derive_interfaces(links)
