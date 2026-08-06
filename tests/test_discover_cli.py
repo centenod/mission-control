@@ -28,6 +28,9 @@ def test_confirm_returns_false_for_n():
         assert discover.confirm("proceed?") is False
 
 
+@patch("discover.RunLogger")
+@patch("discover.write_status")
+@patch("discover.archive_log")
 @patch("discover.git_commit")
 @patch("discover.write_json")
 @patch("discover.format_summary", return_value="summary")
@@ -40,6 +43,7 @@ def test_confirm_returns_false_for_n():
 def test_main_happy_path_writes_and_commits_when_confirmed(
     mock_prompt_cred, mock_confirm, mock_crawl, mock_apply_norm,
     mock_reconcile, mock_derive_interfaces, mock_format_summary, mock_write_json, mock_git_commit,
+    mock_archive_log, mock_write_status, mock_run_logger,
 ):
     mock_prompt_cred.return_value = Credential(username="admin", password="secret")
     empty_result = CrawlResult(visited={}, links=[], auth_failed=[], unreachable=[])
@@ -56,6 +60,8 @@ def test_main_happy_path_writes_and_commits_when_confirmed(
     mock_git_commit.assert_called_once()
 
 
+@patch("discover.RunLogger")
+@patch("discover.write_status")
 @patch("discover.git_commit")
 @patch("discover.write_json")
 @patch("discover.format_summary", return_value="summary")
@@ -68,6 +74,7 @@ def test_main_happy_path_writes_and_commits_when_confirmed(
 def test_main_skips_write_when_user_declines(
     mock_prompt_cred, mock_confirm, mock_crawl, mock_apply_norm,
     mock_reconcile, mock_derive_interfaces, mock_format_summary, mock_write_json, mock_git_commit,
+    mock_write_status, mock_run_logger,
 ):
     mock_prompt_cred.return_value = Credential(username="admin", password="secret")
     empty_result = CrawlResult(visited={}, links=[], auth_failed=[], unreachable=[])
@@ -82,6 +89,8 @@ def test_main_skips_write_when_user_declines(
     mock_git_commit.assert_not_called()
 
 
+@patch("discover.RunLogger")
+@patch("discover.write_status")
 @patch("discover.git_commit")
 @patch("discover.write_json")
 @patch("discover.format_summary", return_value="summary")
@@ -94,6 +103,7 @@ def test_main_skips_write_when_user_declines(
 def test_main_retries_auth_failed_devices_when_confirmed(
     mock_prompt_cred, mock_confirm, mock_crawl, mock_apply_norm,
     mock_reconcile, mock_derive_interfaces, mock_format_summary, mock_write_json, mock_git_commit,
+    mock_write_status, mock_run_logger,
 ):
     cred1 = Credential(username="admin", password="secret")
     cred2 = Credential(username="admin2", password="secret2")
@@ -116,6 +126,8 @@ def test_main_retries_auth_failed_devices_when_confirmed(
     assert second_call_kwargs["credential_sets"] == [cred1, cred2]
 
 
+@patch("discover.RunLogger")
+@patch("discover.write_status")
 @patch("discover.git_commit")
 @patch("discover.write_json")
 @patch("discover.format_summary", return_value="summary")
@@ -128,6 +140,7 @@ def test_main_retries_auth_failed_devices_when_confirmed(
 def test_main_retry_carries_forward_per_host_credential_rejections(
     mock_prompt_cred, mock_confirm, mock_crawl, mock_apply_norm,
     mock_reconcile, mock_derive_interfaces, mock_format_summary, mock_write_json, mock_git_commit,
+    mock_write_status, mock_run_logger,
 ):
     # The retry's seeds are exactly the devices that already refused cred1.
     # Without carrying the rejection map forward, resolve_device would re-submit
@@ -152,6 +165,9 @@ def test_main_retry_carries_forward_per_host_credential_rejections(
     assert second_call_kwargs["rejected_credentials"] == {"10.0.0.5": {"admin"}}
 
 
+@patch("discover.RunLogger")
+@patch("discover.write_status")
+@patch("discover.archive_log")
 @patch("discover.git_commit")
 @patch("discover.write_json")
 @patch("discover.format_summary", return_value="summary")
@@ -162,6 +178,7 @@ def test_main_retry_carries_forward_per_host_credential_rejections(
 def test_main_derives_interfaces_for_both_ends_of_a_cable_seen_from_both_sides(
     mock_prompt_cred, mock_confirm, mock_crawl, mock_apply_norm,
     mock_format_summary, mock_write_json, mock_git_commit,
+    mock_archive_log, mock_write_status, mock_run_logger,
 ):
     # reconcile_links and derive_interfaces are deliberately NOT mocked here —
     # the bug this covers only exists in how the two compose. Reconciliation
@@ -212,6 +229,48 @@ def test_git_commit_warns_instead_of_raising_when_git_fails(mock_run, capsys):
     out = capsys.readouterr().out
     assert "Warning: git commit failed" in out
     assert "output/run.json" in out
+
+
+@patch("discover.write_status")
+def test_progress_handler_tracks_running_counts_and_writes_status(mock_write_status):
+    on_progress, counts = discover._make_progress_handler(seed="10.0.0.1", max_hops=3)
+
+    on_progress("10.0.0.1", 0, "ok")
+    on_progress("10.0.0.2", 1, "auth_failed")
+    on_progress("10.0.0.3", 1, "unreachable")
+    on_progress("10.0.0.4", 1, "ok")
+
+    assert counts["devices_found"] == 2
+    assert counts["auth_failed_count"] == 1
+    assert counts["unreachable_count"] == 1
+    assert mock_write_status.call_count == 4
+    last_status = mock_write_status.call_args.args[0]
+    assert last_status.status == "running"
+    assert last_status.seed == "10.0.0.1"
+    assert last_status.max_hops == 3
+    assert last_status.current_hop == 1
+    assert last_status.devices_found == 2
+    assert last_status.auth_failed_count == 1
+    assert last_status.unreachable_count == 1
+
+
+@patch("discover.shutil.copy")
+def test_archive_log_copies_to_json_timestamp_with_log_suffix(mock_copy, tmp_path):
+    logger_path = tmp_path / "output" / ".current-run.log"
+    logger_path.parent.mkdir(parents=True)
+    logger_path.write_text("some log content")
+    json_path = tmp_path / "output" / "20260806T120000Z-discovery.json"
+
+    discover.archive_log(logger_path, json_path)
+
+    mock_copy.assert_called_once_with(logger_path, tmp_path / "output" / "20260806T120000Z-discovery.log")
+
+
+def test_archive_log_does_nothing_if_logger_path_missing(tmp_path):
+    logger_path = tmp_path / "output" / ".current-run.log"  # never created
+    json_path = tmp_path / "output" / "20260806T120000Z-discovery.json"
+
+    discover.archive_log(logger_path, json_path)  # must not raise
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
