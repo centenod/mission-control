@@ -98,3 +98,59 @@ appear anywhere in the file or the commit.
   releases may format these differently — if `get_device_facts`/
   `get_cdp_neighbors`/`get_lldp_neighbors` silently return no data over SSH,
   check the raw command output against the templates first.
+
+## Manual Docker + Web GUI Verification
+
+The web GUI has automated tests (`tests/webapp/`) covering its routes
+against fake data — this section covers verifying the real container and
+GUI together, which isn't automatable here.
+
+### Prerequisites
+
+- Docker Desktop (or another Docker daemon) running.
+- Ollama running on your host machine with `qwen2.5:7b-instruct` pulled
+  (same requirement as running `discover.py` outside Docker).
+- `ANTHROPIC_API_KEY` set in your shell before running `docker compose up`
+  (compose reads it from your environment via `${ANTHROPIC_API_KEY}`).
+
+### Steps
+
+1. **Build and start the container:**
+   ```bash
+   docker compose up -d --build
+   ```
+2. **Open the dashboard:** visit `http://localhost:5000` — you should see
+   "Status: idle" and "No discovery runs yet" (on a fresh `output/`
+   directory).
+3. **Start a crawl from inside the container:**
+   ```bash
+   docker compose exec mission-control python discover.py --seed <lab-device-ip> --max-hops 2
+   ```
+   Follow the same interactive credential prompts as running it locally.
+4. **While it's running**, refresh `http://localhost:5000` (or just watch —
+   it polls itself every 2 seconds): confirm the status badge shows
+   "running", the device/link counters increase as the crawl progresses,
+   and the live log box shows the same lines appearing in your terminal.
+5. **After it finishes and you confirm the write prompt:** confirm the
+   dashboard's status returns to "idle", the new run appears in the Past
+   Runs table, and clicking it shows the devices/interfaces/links tables
+   plus the archived log in the collapsible "Run Log" section.
+6. **Stop the container:**
+   ```bash
+   docker compose down
+   ```
+
+### Known Limitations to Watch For
+
+- If Ollama isn't reachable from inside the container (check
+  `OLLAMA_HOST=http://host.docker.internal:11434` resolves — this is a
+  no-op on Docker Desktop for Mac/Windows but requires the
+  `extra_hosts: host.docker.internal:host-gateway` entry in
+  `docker-compose.yml` on Linux), AI normalization will fall back to Claude
+  Haiku 4.5, or to raw values with `needs_review=true` if that also fails —
+  the crawl still completes either way, per the design's "AI never blocks a
+  run" contract.
+- The GUI is view-only in this phase — there's no way to start, stop, or
+  configure a crawl from the browser. That's deliberate (see
+  `docs/superpowers/specs/2026-08-06-docker-web-gui-design.md`'s
+  Non-Goals) and planned for a later phase.
