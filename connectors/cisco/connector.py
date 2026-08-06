@@ -28,14 +28,14 @@ def _get_device_facts(host: str, credential: Credential, hop: int) -> tuple[Devi
     try:
         return restconf_client.get_device_facts(host, credential, hop), "restconf"
     except (restconf_client.RestconfAuthError, restconf_client.RestconfUnsupported,
-            restconf_client.RestconfConnectionError):
+            restconf_client.RestconfConnectionError, KeyError, IndexError):
         pass
 
     try:
         return ssh_client.get_device_facts(host, credential, hop), "ssh"
     except ssh_client.SshAuthError as e:
         raise AuthenticationFailed(str(e)) from e
-    except ssh_client.SshConnectionError as e:
+    except (ssh_client.SshConnectionError, KeyError, IndexError) as e:
         raise DeviceUnreachable(str(e)) from e
 
 
@@ -55,11 +55,11 @@ def get_cdp_neighbors(host: str, credential: Credential, local_device_serial: st
     try:
         return restconf_client.get_cdp_neighbors(host, credential, local_device_serial, hop)
     except (restconf_client.RestconfAuthError, restconf_client.RestconfUnsupported,
-            restconf_client.RestconfConnectionError):
+            restconf_client.RestconfConnectionError, KeyError, IndexError):
         pass
     try:
         return ssh_client.get_cdp_neighbors(host, credential, local_device_serial, hop)
-    except (ssh_client.SshAuthError, ssh_client.SshConnectionError) as e:
+    except (ssh_client.SshAuthError, ssh_client.SshConnectionError, KeyError, IndexError) as e:
         logger.warning("CDP neighbors unavailable for %s: %s", host, e)
         return []
 
@@ -68,10 +68,10 @@ def get_lldp_neighbors(host: str, credential: Credential, local_device_serial: s
     try:
         return restconf_client.get_lldp_neighbors(host, credential, local_device_serial, hop)
     except (restconf_client.RestconfAuthError, restconf_client.RestconfUnsupported,
-            restconf_client.RestconfConnectionError):
+            restconf_client.RestconfConnectionError, KeyError, IndexError):
         pass
     try:
         return ssh_client.get_lldp_neighbors(host, credential, local_device_serial, hop)
-    except (ssh_client.SshAuthError, ssh_client.SshConnectionError) as e:
+    except (ssh_client.SshAuthError, ssh_client.SshConnectionError, KeyError, IndexError) as e:
         logger.warning("LLDP neighbors unavailable for %s: %s", host, e)
         return []

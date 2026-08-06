@@ -84,3 +84,34 @@ def test_get_lldp_neighbors_returns_empty_when_both_transports_fail(mock_restcon
     links = get_lldp_neighbors("10.0.0.1", CRED1, local_device_serial="S1", hop=0)
 
     assert links == []
+
+
+@patch("connectors.cisco.connector.ssh_client.get_device_facts")
+@patch("connectors.cisco.connector.restconf_client.get_device_facts")
+def test_resolve_device_falls_back_to_ssh_on_malformed_restconf_response(mock_restconf_facts, mock_ssh_facts):
+    mock_restconf_facts.side_effect = KeyError("Cisco-IOS-XE-device-hardware-oper:device-hardware-data")
+    mock_ssh_facts.return_value = FACTS
+    result = resolve_device("10.0.0.1", [CRED1], hop=0)
+    assert result.status == "ok"
+    assert result.facts_source == "ssh"
+
+
+@patch("connectors.cisco.connector.ssh_client.get_device_facts")
+@patch("connectors.cisco.connector.restconf_client.get_device_facts")
+def test_resolve_device_returns_unreachable_when_both_transports_return_malformed_response(mock_restconf_facts, mock_ssh_facts):
+    mock_restconf_facts.side_effect = KeyError("bad-key")
+    mock_ssh_facts.side_effect = IndexError("rows[0]")
+    result = resolve_device("10.0.0.1", [CRED1, CRED2], hop=0)
+    assert result.status == "unreachable"
+    assert mock_ssh_facts.call_count == 1  # malformed response is credential-independent, no retry
+
+
+@patch("connectors.cisco.connector.ssh_client.get_cdp_neighbors")
+@patch("connectors.cisco.connector.restconf_client.get_cdp_neighbors")
+def test_get_cdp_neighbors_returns_empty_when_both_transports_return_malformed_response(mock_restconf_cdp, mock_ssh_cdp):
+    mock_restconf_cdp.side_effect = KeyError("cdp-neighbor-details")
+    mock_ssh_cdp.side_effect = IndexError("rows[0]")
+
+    links = get_cdp_neighbors("10.0.0.1", CRED1, local_device_serial="S1", hop=0)
+
+    assert links == []
