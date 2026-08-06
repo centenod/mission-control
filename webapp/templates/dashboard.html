@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<section id="status-card">
+  <h2>Status: <span id="status-badge">{{ status.status }}</span></h2>
+  <div id="counters">
+    <p>Devices found: <span id="devices-found">{{ status.devices_found }}</span></p>
+    <p>Links found: <span id="links-found">{{ status.links_found }}</span></p>
+    <p>Auth failed: <span id="auth-failed-count">{{ status.auth_failed_count }}</span></p>
+    <p>Unreachable: <span id="unreachable-count">{{ status.unreachable_count }}</span></p>
+  </div>
+</section>
+
+<section id="log-section">
+  <h2>Live Log</h2>
+  <pre id="log-tail"></pre>
+</section>
+
+<section id="past-runs">
+  <h2>Past Runs</h2>
+  {% if runs %}
+  <table>
+    <tr><th>Timestamp</th><th>Devices</th><th>Links</th></tr>
+    {% for run in runs %}
+    <tr>
+      <td><a href="/runs/{{ run.timestamp }}">{{ run.timestamp }}</a></td>
+      <td>{{ run.device_count }}</td>
+      <td>{{ run.link_count }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No discovery runs yet.</p>
+  {% endif %}
+</section>
+
+<script>
+async function poll() {
+  const statusResp = await fetch("/api/status");
+  const status = await statusResp.json();
+  document.getElementById("status-badge").textContent = status.status;
+  document.getElementById("devices-found").textContent = status.devices_found;
+  document.getElementById("links-found").textContent = status.links_found;
+  document.getElementById("auth-failed-count").textContent = status.auth_failed_count;
+  document.getElementById("unreachable-count").textContent = status.unreachable_count;
+
+  const logResp = await fetch("/api/log");
+  const log = await logResp.json();
+  document.getElementById("log-tail").textContent = log.log;
+}
+poll();
+setInterval(poll, 2000);
+</script>
+{% endblock %}

@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mission Control — Discovery Crawler</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header><h1><a href="{{ url_for('dashboard') }}">Mission Control — Discovery Crawler</a></h1></header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

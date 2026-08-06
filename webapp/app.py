@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 
 from crawler.status import read_status
 
@@ -44,6 +44,13 @@ def create_app(output_dir: Path = OUTPUT_DIR) -> Flask:
     @app.route("/api/runs")
     def api_runs():
         return jsonify(list_runs(app.config["OUTPUT_DIR"]))
+
+    @app.route("/")
+    def dashboard():
+        status_path = app.config["OUTPUT_DIR"] / ".status.json"
+        status = read_status(path=status_path)
+        runs = list_runs(app.config["OUTPUT_DIR"])
+        return render_template("dashboard.html", status=status, runs=runs)
 
     return app
 
