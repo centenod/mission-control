@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Run: {{ timestamp }}</h2>
+
+<section>
+  <h3>Devices ({{ data.devices | length }})</h3>
+  <table>
+    <tr><th>Name</th><th>Serial</th><th>Model</th><th>IP</th><th>Source</th></tr>
+    {% for d in data.devices %}
+    <tr><td>{{ d.name }}</td><td>{{ d.serial }}</td><td>{{ d.model }}</td><td>{{ d.primary_ip4 }}</td><td>{{ d.source }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h3>Interfaces ({{ data.interfaces | length }})</h3>
+  <table>
+    <tr><th>Device Serial</th><th>Name</th><th>Source</th></tr>
+    {% for i in data.interfaces %}
+    <tr><td>{{ i.device_serial }}</td><td>{{ i.name }}</td><td>{{ i.source }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h3>Links ({{ data.links | length }})</h3>
+  <table>
+    <tr><th>A</th><th>A Interface</th><th>B</th><th>B Interface</th><th>Protocol</th></tr>
+    {% for l in data.links %}
+    <tr><td>{{ l.a_device_serial }}</td><td>{{ l.a_interface }}</td><td>{{ l.b_device_serial or l.b_device_hostname }}</td><td>{{ l.b_interface }}</td><td>{{ l.protocol }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h3>Auth Failed ({{ data.auth_failed | length }})</h3>
+  <ul>{% for a in data.auth_failed %}<li>[{{ a.hop }}] {{ a.ip }}</li>{% endfor %}</ul>
+</section>
+
+<section>
+  <h3>Unreachable ({{ data.unreachable | length }})</h3>
+  <ul>{% for u in data.unreachable %}<li>[{{ u.hop }}] {{ u.ip }}</li>{% endfor %}</ul>
+</section>
+
+{% if log_content %}
+<details>
+  <summary>Run Log</summary>
+  <pre>{{ log_content }}</pre>
+</details>
+{% else %}
+<p>Log not available for this run.</p>
+{% endif %}
+{% endblock %}

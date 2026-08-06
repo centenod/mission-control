@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, abort, jsonify, render_template
 
 from crawler.status import read_status
 
@@ -51,6 +51,16 @@ def create_app(output_dir: Path = OUTPUT_DIR) -> Flask:
         status = read_status(path=status_path)
         runs = list_runs(app.config["OUTPUT_DIR"])
         return render_template("dashboard.html", status=status, runs=runs)
+
+    @app.route("/runs/<timestamp>")
+    def run_detail(timestamp):
+        json_path = app.config["OUTPUT_DIR"] / f"{timestamp}-discovery.json"
+        if not json_path.exists():
+            abort(404)
+        data = json.loads(json_path.read_text())
+        log_path = app.config["OUTPUT_DIR"] / f"{timestamp}-discovery.log"
+        log_content = log_path.read_text() if log_path.exists() else None
+        return render_template("run_detail.html", timestamp=timestamp, data=data, log_content=log_content)
 
     return app
 
