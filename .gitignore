@@ -1,1 +1,9 @@
 .worktrees/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+output/*.json
+!output/.gitkeep
+.pytest_cache/

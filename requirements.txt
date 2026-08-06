@@ -1,0 +1,7 @@
+requests>=2.31
+netmiko>=4.3
+textfsm>=1.1
+pydantic>=2.5
+ollama>=0.3
+anthropic>=0.40
+pytest>=8.0
