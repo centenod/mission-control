@@ -105,6 +105,11 @@ The web GUI has automated tests (`tests/webapp/`) covering its routes
 against fake data — this section covers verifying the real container and
 GUI together, which isn't automatable here.
 
+**Note:** this procedure has not yet been executed end-to-end — Docker was
+unavailable in the environment where this was built. Findings #1-#5 from the
+review that led to this note were caught by static review, not by running it;
+please report back if anything else surfaces on a real run.
+
 ### Prerequisites
 
 - Docker Desktop (or another Docker daemon) running.
@@ -119,18 +124,23 @@ GUI together, which isn't automatable here.
    ```bash
    docker compose up -d --build
    ```
-2. **Open the dashboard:** visit `http://localhost:5000` — you should see
+2. **Open the dashboard:** visit `http://localhost:5001` — you should see
    "Status: idle" and "No discovery runs yet" (on a fresh `output/`
-   directory).
+   directory). The app listens on port 5000 *inside* the container but is
+   published on host port 5001, because macOS's built-in AirPlay Receiver
+   binds port 5000 by default and would answer instead.
 3. **Start a crawl from inside the container:**
    ```bash
    docker compose exec mission-control python discover.py --seed <lab-device-ip> --max-hops 2
    ```
    Follow the same interactive credential prompts as running it locally.
-4. **While it's running**, refresh `http://localhost:5000` (or just watch —
+4. **While it's running**, refresh `http://localhost:5001` (or just watch —
    it polls itself every 2 seconds): confirm the status badge shows
-   "running", the device/link counters increase as the crawl progresses,
-   and the live log box shows the same lines appearing in your terminal.
+   "running", the device counter and hop number increase as the crawl
+   progresses (the link counter stays at 0 until the run completes — it's
+   only known once the full result is available, not derivable from live
+   per-device events), and the live log box shows the same lines appearing
+   in your terminal.
 5. **After it finishes and you confirm the write prompt:** confirm the
    dashboard's status returns to "idle", the new run appears in the Past
    Runs table, and clicking it shows the devices/interfaces/links tables

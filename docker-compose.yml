@@ -1,7 +1,9 @@
 services:
   mission-control:
     build: .
-    ports: ["5000:5000"]
+    # Host port 5001, not 5000: macOS AirPlay Receiver (ControlCenter) binds
+    # *:5000 by default and would answer with its own HTTP 403 instead.
+    ports: ["5001:5000"]
     volumes: ["./output:/app/output"]
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
