@@ -1,5 +1,6 @@
 # crawler/crawl.py
 from dataclasses import dataclass, field
+from typing import Callable
 
 from connectors.cisco import connector
 from connectors.cisco.models import Credential, DeviceFacts, NeighborLink
@@ -25,6 +26,7 @@ def crawl(
     visited: dict[str, DeviceFacts] | None = None,
     links: list[NeighborLink] | None = None,
     rejected_credentials: dict[str, set[str]] | None = None,
+    on_progress: Callable[[str, int, str], None] | None = None,
 ) -> CrawlResult:
     visited = dict(visited) if visited else {}
     links = list(links) if links else []
@@ -56,9 +58,13 @@ def crawl(
                 # been tried and refused.
                 rejected[ip] = rejected.get(ip, set()) | {c.username for c in credential_sets}
                 auth_failed.append((ip, hop))
+                if on_progress is not None:
+                    on_progress(ip, hop, "auth_failed")
                 continue
             if result.status == "unreachable":
                 unreachable.append((ip, hop))
+                if on_progress is not None:
+                    on_progress(ip, hop, "unreachable")
                 continue
 
             facts = result.facts
@@ -67,6 +73,9 @@ def crawl(
             facts.custom_fields["discovery_credential_user"] = result.credential.username
             already_known_serial = facts.serial in visited
             visited[facts.serial] = facts
+
+            if on_progress is not None:
+                on_progress(ip, hop, "ok")
 
             if already_known_serial:
                 # Same physical device reached via a second management IP

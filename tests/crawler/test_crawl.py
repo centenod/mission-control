@@ -245,3 +245,46 @@ def test_crawl_catches_keyboard_interrupt_and_returns_partial_results(mock_resol
 
     assert result.interrupted is True
     assert "S1" in result.visited  # work completed before the interrupt is preserved
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_calls_on_progress_for_each_outcome(mock_resolve, mock_cdp, mock_lldp):
+    mock_resolve.side_effect = [
+        ConnectResult(status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf"),
+        ConnectResult(status="auth_failed"),
+        ConnectResult(status="unreachable"),
+    ]
+    mock_cdp.return_value = []
+    mock_lldp.return_value = []
+    events = []
+
+    crawl(
+        [("10.0.0.1", 0), ("10.0.0.2", 0), ("10.0.0.3", 0)],
+        max_hops=3, credential_sets=[CRED],
+        on_progress=lambda ip, hop, status: events.append((ip, hop, status)),
+    )
+
+    assert events == [
+        ("10.0.0.1", 0, "ok"),
+        ("10.0.0.2", 0, "auth_failed"),
+        ("10.0.0.3", 0, "unreachable"),
+    ]
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_without_on_progress_still_works(mock_resolve, mock_cdp, mock_lldp):
+    # Default None must not raise or change behavior — every prior test in
+    # this file relies on that.
+    mock_resolve.return_value = ConnectResult(
+        status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf"
+    )
+    mock_cdp.return_value = []
+    mock_lldp.return_value = []
+
+    result = crawl([("10.0.0.1", 0)], max_hops=3, credential_sets=[CRED])
+
+    assert "S1" in result.visited
