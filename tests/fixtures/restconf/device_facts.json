@@ -1,0 +1,12 @@
+{
+  "Cisco-IOS-XE-device-hardware-oper:device-hardware-data": {
+    "device-hardware": {
+      "device-system-data": {
+        "software-version": "17.9.4a",
+        "serial-number": "FCW2140L0GH",
+        "product-id": "WS-C3850-24T",
+        "host-name": "sw01"
+      }
+    }
+  }
+}

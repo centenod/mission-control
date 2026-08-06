@@ -1,0 +1,24 @@
+{
+  "Cisco-IOS-XE-cdp-oper:cdp-neighbor-details": {
+    "cdp-neighbor-detail": [
+      {
+        "device-id": "sw02.lab.local",
+        "local-interface": "GigabitEthernet0/1",
+        "platform": "cisco WS-C2960X-24TS-L",
+        "port-id": "GigabitEthernet0/2",
+        "duplex": "full",
+        "software-version": "17.9.4a",
+        "mgmt-address": ["10.0.0.2"]
+      },
+      {
+        "device-id": "rtr01.lab.local",
+        "local-interface": "GigabitEthernet0/2",
+        "platform": "cisco ISR4331/K9",
+        "port-id": "GigabitEthernet0/0/0",
+        "duplex": "full",
+        "software-version": "17.3.5",
+        "mgmt-address": ["10.0.0.3"]
+      }
+    ]
+  }
+}

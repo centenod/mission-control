@@ -1,0 +1,19 @@
+{
+  "Cisco-IOS-XE-lldp-oper:lldp-entries": {
+    "lldp-intf-details": [
+      {
+        "if-name": "GigabitEthernet0/1",
+        "lldp-neighbor-details": [
+          {
+            "device-id": "sw02.lab.local",
+            "local-interface": "GigabitEthernet0/1",
+            "chassis-id": "aabb.cc00.0200",
+            "port-id": "GigabitEthernet0/2",
+            "port-description": "GigabitEthernet0/2",
+            "management-address": "10.0.0.2"
+          }
+        ]
+      }
+    ]
+  }
+}
