@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.pytest_cache/
+.worktrees/
+.superpowers/
+output/*.json
+output/*.log
+output/.status.json
+output/.current-run.log
