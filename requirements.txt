@@ -6,3 +6,4 @@ pydantic>=2.5
 ollama>=0.3
 anthropic>=0.40
 pytest>=8.0
+Flask>=3.0
