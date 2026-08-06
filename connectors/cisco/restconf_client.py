@@ -1,3 +1,10 @@
+# ⚠️ UNVERIFIED AGAINST REAL HARDWARE.
+# The YANG model names, RESTCONF paths, and response field names used in this
+# module (and in restconf_parsing.py) are best-effort, written from
+# documentation only — no Cisco IOS-XE device was available during
+# implementation, so none of them have ever been exercised against real
+# equipment. Validate them before trusting this path in production; the
+# procedure is in docs/testing.md ("NOT YET VALIDATED" section).
 import requests
 import urllib3
 

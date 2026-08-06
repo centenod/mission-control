@@ -214,18 +214,27 @@ logged, never included in output JSON or committed to git.
 
 ```python
 credential_sets = [(username1, password1)]   # first set prompted at startup
+rejected = {}   # ip -> set of usernames that host has already refused
 
 def connect_device(ip):
     for username, password in credential_sets:
+        if username in rejected.get(ip, set()):
+            continue      # this host already refused it — never re-submit
         try:
             return connect(ip, username, password), username
         except AuthFailure:
             continue
-    return None, None   # exhausted all known credential sets
+    rejected[ip] = rejected.get(ip, set()) | {u for u, _ in credential_sets}
+    return None, None   # exhausted all credential sets not already known-bad
 ```
 
 Auth failures are never retried with the *same* credentials (avoids tripping AAA
-lockout policies). Every successfully-reached device records which credential
+lockout policies). This is **per host**, not per run: the `rejected` map must be
+carried into the alternate-credential retry pass below, because that pass is
+handed the full accumulated `credential_sets` and its seeds are exactly the
+devices that already refused the earlier entries. Skipping by username (rather
+than by username+password) is deliberate — lockout counters are per-account.
+Every successfully-reached device records which credential
 succeeded: `comments = f"Reached with user: {username}"` and
 `custom_fields["discovery_credential_user"] = username` — full audit trail,
 password never recorded.
@@ -241,10 +250,15 @@ queue = [(seed_ip, hop=0)]
 visited = {}            # serial -> DeviceFacts
 links = []               # NeighborLink entries, not yet fully reconciled
 auth_failed_bucket = []  # devices that exhausted all known credential_sets
+attempted_ips = set()    # every IP dialed this pass, whatever the outcome
 
 while queue:
     ip, hop = queue.pop(0)
-    if ip already visited or hop > max_hops: continue
+    # attempted_ips covers auth-failed and unreachable hosts too, not just
+    # successful ones — a device advertised again by a later neighbor must
+    # not be re-dialed, or a rejected credential gets re-submitted to it.
+    if ip in attempted_ips or hop > max_hops: continue
+    attempted_ips.add(ip)
 
     connection, used_username = connect_device(ip)   # RESTCONF, fallback SSH, per capability
     if connection is None:
@@ -274,8 +288,16 @@ while auth_failed_bucket:
     retry_queue = auth_failed_bucket
     auth_failed_bucket = []
     queue = retry_queue                                 # resume BFS loop with expanded credentials
+    attempted_ips = set()                               # fresh pass; `rejected` is what carries over
     # (re-enters the main while-queue loop above; newly reached devices'
     #  neighbors get queued too, same as the initial pass)
+    #
+    # The retry pass gets the FULL accumulated credential_sets, not just the
+    # new entry: devices discovered for the first time during this pass have
+    # never been offered the earlier credentials and may well need them. The
+    # per-host `rejected` map (carried over, NOT reset) is what stops the
+    # retry seeds — which by definition already refused every earlier entry —
+    # from being re-dialed with those same credentials.
 
 # AI normalization pass (see "AI Normalization" section below) — runs here,
 # before reconciliation, so hostname matching below uses cleaned values
@@ -292,8 +314,20 @@ deduplicate links by (serial, interface) pairs, collapsing A->B and B->A
 show final device + link list on screen
 prompt: write to file? (y/n)
 write JSON to output/<timestamp>-discovery.json
-git add + commit
+git add -f + commit     # -f is required: output/*.json is gitignored so that
+                        #   throwaway runs don't clutter the repo, and this one
+                        #   file has already passed the user's write confirmation.
+                        # Both git calls are wrapped in try/except: the JSON is
+                        #   already safely on disk, so a git failure prints a
+                        #   warning and the run still succeeds — it never
+                        #   tracebacks over a completed crawl.
 ```
+
+Note the ordering of the two derivation passes above: interface records are
+derived from the **raw** link list, *before* reconciliation. `derive_interfaces`
+emits only the local ("a") side of each link, and reconciliation collapses a
+cable observed from both ends into a single entry — so deriving afterwards would
+silently drop the far-end interface of every both-ends-observed cable.
 
 ## AI Normalization
 
@@ -310,6 +344,12 @@ raw fields → prompts/normalize-device.md → local model (Ollama qwen2.5:7b-in
   → still invalid: keep raw values, set needs_review=true, log warning
 ```
 
+`manufacturer` is explicitly **not** normalized — vendor scope is Cisco-only, so
+the value is a known constant and routing it through an LLM adds hallucination
+surface with no benefit. The raw device-reported hostname is stashed in
+`custom_fields["raw_hostname"]` before `name` is overwritten, preserving the
+audit trail of what the device actually said versus what the AI decided.
+
 This is the first real entry in Mission Control's Model Registry concept:
 `Capability: "device-field-normalization" → Preferred: local qwen2.5:7b-instruct
 → Fallback: Claude Haiku 4.5`. Normalization is enrichment only, never a blocker —
@@ -325,6 +365,8 @@ a total AI failure still produces a complete, usable discovery run using raw val
 | SSH also fails for that capability | Mark that capability `unavailable` for the device, keep what else succeeded |
 | Partial neighbor data (CDP works, LLDP doesn't, or vice versa) | Keep partial data, don't discard the device |
 | AI normalization fails both models | Keep raw values, `needs_review=true`, continue |
+| AI normalization raises any other exception (missing prompt file, etc.) | Caught per-device by the pipeline; keep raw values, `needs_review=true`, `normalization_confidence=0.0`, continue — a completed crawl is never discarded over enrichment |
+| `git add`/`git commit` of the output file fails | Warn and continue — the JSON is already written to disk; the user commits manually if they want to |
 | Ctrl-C mid-crawl | Catch, offer to write out whatever was discovered so far |
 
 No failure halts the whole run — a bad device degrades gracefully, and the final
