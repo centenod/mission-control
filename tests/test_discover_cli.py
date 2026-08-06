@@ -231,6 +231,64 @@ def test_git_commit_warns_instead_of_raising_when_git_fails(mock_run, capsys):
     assert "output/run.json" in out
 
 
+@patch("discover.subprocess.run")
+def test_git_commit_warns_instead_of_raising_when_git_is_not_installed(mock_run, capsys):
+    # python:3.12-slim (the Docker base image) ships no git binary at all, so
+    # subprocess.run raises FileNotFoundError rather than CalledProcessError —
+    # a traceback at the end of an otherwise successful containerised run.
+    mock_run.side_effect = FileNotFoundError("git not found")
+
+    discover.git_commit(Path("output/run.json"))  # must not raise
+
+    out = capsys.readouterr().out
+    assert "Warning: git commit failed" in out
+    assert "output/run.json" in out
+
+
+@patch("discover.RunLogger")
+@patch("discover.write_status")
+@patch("discover.archive_log")
+@patch("discover.git_commit")
+@patch("discover.write_json")
+@patch("discover.format_summary", return_value="summary")
+@patch("discover.derive_interfaces", return_value=[])
+@patch("discover.reconcile_links")
+@patch("discover.apply_normalization")
+@patch("discover.crawl")
+@patch("discover.confirm")
+@patch("discover.prompt_credential")
+def test_main_writes_running_status_before_crawling_starts(
+    mock_prompt_cred, mock_confirm, mock_crawl, mock_apply_norm,
+    mock_reconcile, mock_derive_interfaces, mock_format_summary, mock_write_json,
+    mock_git_commit, mock_archive_log, mock_write_status, mock_run_logger,
+):
+    # Credential prompting is interactive and the first device's
+    # RESTCONF-then-SSH fallback can take 30+ seconds, so waiting for the first
+    # on_progress event would leave the dashboard showing a stale run.
+    calls = []
+    mock_write_status.side_effect = lambda status: calls.append(("status", status))
+    mock_prompt_cred.side_effect = lambda *a, **kw: (
+        calls.append(("prompt", None)) or Credential(username="admin", password="secret")
+    )
+    mock_crawl.side_effect = lambda *a, **kw: (
+        calls.append(("crawl", None))
+        or CrawlResult(visited={}, links=[], auth_failed=[], unreachable=[])
+    )
+    mock_reconcile.return_value = []
+    mock_confirm.return_value = False
+
+    discover.main(["--seed", "10.0.0.1", "--max-hops", "2"])
+
+    kinds = [kind for kind, _ in calls]
+    assert kinds.index("status") < kinds.index("prompt") < kinds.index("crawl")
+    initial_status = calls[0][1]
+    assert initial_status.status == "running"
+    assert initial_status.seed == "10.0.0.1"
+    assert initial_status.max_hops == 2
+    assert initial_status.started_at is not None
+    assert initial_status.last_updated is not None
+
+
 @patch("discover.write_status")
 def test_progress_handler_tracks_running_counts_and_writes_status(mock_write_status):
     on_progress, counts = discover._make_progress_handler(seed="10.0.0.1", max_hops=3)

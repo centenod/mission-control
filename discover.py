@@ -34,11 +34,14 @@ def git_commit(path: Path) -> None:
     # `output/*.json` is gitignored so throwaway runs don't clutter the repo —
     # force-add the one file the user explicitly confirmed they want kept.
     # The JSON is already safely on disk here, so a git failure degrades to a
-    # warning rather than losing a completed crawl to a traceback.
+    # warning rather than losing a completed crawl to a traceback. That
+    # includes git being absent entirely (FileNotFoundError) — the Docker
+    # image is built on python:3.12-slim, which ships no git binary, and
+    # `.dockerignore` excludes `.git/` so /app isn't a repo there anyway.
     try:
         subprocess.run(["git", "add", "-f", str(path)], check=True)
         subprocess.run(["git", "commit", "-m", f"chore: add discovery run {path.name}"], check=True)
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(
             f"Warning: git commit failed: {e}. "
             f"The file is saved at {path} — commit manually if desired."
@@ -94,6 +97,18 @@ def main(argv=None) -> int:
 
     logger = RunLogger()
     on_progress, counts = _make_progress_handler(args.seed, args.max_hops)
+
+    # Publish "running" before anything slow happens: credential prompting is
+    # interactive/unbounded and the first device's RESTCONF-then-SSH fallback
+    # can take 30+ seconds, during which on_progress hasn't fired yet and the
+    # dashboard would otherwise show a stale previous run's status.
+    write_status(RunStatus(
+        status="running",
+        seed=args.seed,
+        max_hops=args.max_hops,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        last_updated=datetime.now(timezone.utc).isoformat(),
+    ))
 
     credential_sets = [prompt_credential()]
     result = crawl(
