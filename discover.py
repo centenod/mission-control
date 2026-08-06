@@ -27,8 +27,18 @@ def confirm(prompt_text: str) -> bool:
 
 
 def git_commit(path: Path) -> None:
-    subprocess.run(["git", "add", str(path)], check=True)
-    subprocess.run(["git", "commit", "-m", f"chore: add discovery run {path.name}"], check=True)
+    # `output/*.json` is gitignored so throwaway runs don't clutter the repo —
+    # force-add the one file the user explicitly confirmed they want kept.
+    # The JSON is already safely on disk here, so a git failure degrades to a
+    # warning rather than losing a completed crawl to a traceback.
+    try:
+        subprocess.run(["git", "add", "-f", str(path)], check=True)
+        subprocess.run(["git", "commit", "-m", f"chore: add discovery run {path.name}"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(
+            f"Warning: git commit failed: {e}. "
+            f"The file is saved at {path} — commit manually if desired."
+        )
 
 
 def main(argv=None) -> int:
@@ -55,6 +65,10 @@ def main(argv=None) -> int:
             credential_sets=credential_sets,
             visited=result.visited,
             links=result.links,
+            # Carry forward which credentials each host already rejected, so the
+            # retry never re-submits a known-bad login (AAA lockout risk) while
+            # devices newly discovered during the retry still get every set.
+            rejected_credentials=result.rejected_credentials,
         )
         all_unreachable.extend(result.unreachable)
 
@@ -62,8 +76,13 @@ def main(argv=None) -> int:
     if result.interrupted:
         print("\nInterrupted — showing what was discovered before the interrupt.")
     apply_normalization(result.visited)
-    result.links = reconcile_links(result.visited, result.links)
+    # Derive interfaces from the RAW link list, before reconciliation: a cable
+    # seen from both ends is recorded as two links (A->B and B->A), and
+    # derive_interfaces only emits the local ("a") side of each. reconcile_links
+    # collapses those two into one, so running it first would silently drop the
+    # far-end interface of every both-ends-observed cable.
     interfaces = derive_interfaces(result.links)
+    result.links = reconcile_links(result.visited, result.links)
 
     print("\n" + format_summary(result))
 
