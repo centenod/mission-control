@@ -17,9 +17,10 @@
 
 <section id="past-runs">
   <h2>Past Runs</h2>
-  {% if runs %}
-  <table>
-    <tr><th>Timestamp</th><th>Devices</th><th>Links</th></tr>
+  <!-- Server-rendered for first paint / no-JS; poll() keeps it in sync after. -->
+  <table id="runs-table"{% if not runs %} hidden{% endif %}>
+    <thead><tr><th>Timestamp</th><th>Devices</th><th>Links</th></tr></thead>
+    <tbody id="runs-tbody">
     {% for run in runs %}
     <tr>
       <td><a href="/runs/{{ run.timestamp }}">{{ run.timestamp }}</a></td>
@@ -27,10 +28,9 @@
       <td>{{ run.link_count }}</td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}
-  <p>No discovery runs yet.</p>
-  {% endif %}
+  <p id="no-runs-message"{% if runs %} hidden{% endif %}>No discovery runs yet.</p>
 </section>
 
 <script>
@@ -46,6 +46,40 @@ async function poll() {
   const logResp = await fetch("/api/log");
   const log = await logResp.json();
   document.getElementById("log-tail").textContent = log.log;
+
+  const runsResp = await fetch("/api/runs");
+  const runs = await runsResp.json();
+  renderRuns(runs);
+}
+
+// A run only lands in /api/runs once it's written to disk, so without this the
+// Past Runs table would stay stale until a full page reload.
+function renderRuns(runs) {
+  const table = document.getElementById("runs-table");
+  const tbody = document.getElementById("runs-tbody");
+  const emptyMessage = document.getElementById("no-runs-message");
+
+  table.hidden = runs.length === 0;
+  emptyMessage.hidden = runs.length !== 0;
+
+  tbody.replaceChildren();
+  for (const run of runs) {
+    const row = document.createElement("tr");
+
+    const link = document.createElement("a");
+    link.href = "/runs/" + encodeURIComponent(run.timestamp);
+    link.textContent = run.timestamp;
+    const timestampCell = document.createElement("td");
+    timestampCell.appendChild(link);
+
+    const deviceCell = document.createElement("td");
+    deviceCell.textContent = run.device_count;
+    const linkCell = document.createElement("td");
+    linkCell.textContent = run.link_count;
+
+    row.append(timestampCell, deviceCell, linkCell);
+    tbody.appendChild(row);
+  }
 }
 poll();
 setInterval(poll, 2000);
