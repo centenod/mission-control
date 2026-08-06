@@ -145,6 +145,96 @@ def test_crawl_skips_neighbor_expansion_for_already_known_serial(mock_resolve, m
 @patch("crawler.crawl.connector.get_lldp_neighbors")
 @patch("crawler.crawl.connector.get_cdp_neighbors")
 @patch("crawler.crawl.connector.resolve_device")
+def test_crawl_never_redials_an_auth_failed_ip_advertised_again_by_a_neighbor(mock_resolve, mock_cdp, mock_lldp):
+    # 10.0.0.9 rejects our credential, then a later device advertises it as its
+    # neighbor. Re-dialing would re-submit the same rejected login — exactly the
+    # AAA-lockout risk the "no same-credential retry" rule exists to prevent.
+    mock_resolve.side_effect = [
+        ConnectResult(status="auth_failed"),
+        ConnectResult(status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf"),
+    ]
+    mock_cdp.return_value = [NeighborLink(
+        a_device_serial="S1", a_interface="Gi0/1", b_device_hostname="sw09", b_interface="Gi0/2",
+        protocol="cdp", discovered_via_hop=0, source="restconf", b_device_ip="10.0.0.9",
+    )]
+    mock_lldp.return_value = []
+
+    result = crawl([("10.0.0.9", 0), ("10.0.0.1", 0)], max_hops=3, credential_sets=[CRED])
+
+    dialed = [call.args[0] for call in mock_resolve.call_args_list]
+    assert dialed == ["10.0.0.9", "10.0.0.1"]  # 10.0.0.9 dialed exactly once
+    assert result.auth_failed == [("10.0.0.9", 0)]
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_never_redials_an_unreachable_ip_advertised_again_by_a_neighbor(mock_resolve, mock_cdp, mock_lldp):
+    mock_resolve.side_effect = [
+        ConnectResult(status="unreachable"),
+        ConnectResult(status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf"),
+    ]
+    mock_cdp.return_value = [NeighborLink(
+        a_device_serial="S1", a_interface="Gi0/1", b_device_hostname="sw09", b_interface="Gi0/2",
+        protocol="cdp", discovered_via_hop=0, source="restconf", b_device_ip="10.0.0.9",
+    )]
+    mock_lldp.return_value = []
+
+    result = crawl([("10.0.0.9", 0), ("10.0.0.1", 0)], max_hops=3, credential_sets=[CRED])
+
+    dialed = [call.args[0] for call in mock_resolve.call_args_list]
+    assert dialed == ["10.0.0.9", "10.0.0.1"]
+    assert result.unreachable == [("10.0.0.9", 0)]
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_records_rejected_usernames_per_host_on_auth_failure(mock_resolve, mock_cdp, mock_lldp):
+    mock_resolve.return_value = ConnectResult(status="auth_failed")
+    cred2 = Credential(username="admin2", password="s2")
+
+    result = crawl([("10.0.0.9", 0)], max_hops=3, credential_sets=[CRED, cred2])
+
+    assert result.rejected_credentials == {"10.0.0.9": {"admin", "admin2"}}
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_passes_prior_rejections_to_resolve_device_and_accumulates_them(mock_resolve, mock_cdp, mock_lldp):
+    # Retry pass: 10.0.0.9 already refused "admin", so only the new credential
+    # may be offered to it — but the full set is still passed for any device
+    # discovered for the first time during this pass.
+    mock_resolve.return_value = ConnectResult(status="auth_failed")
+    cred2 = Credential(username="admin2", password="s2")
+
+    result = crawl(
+        [("10.0.0.9", 0)], max_hops=3, credential_sets=[CRED, cred2],
+        rejected_credentials={"10.0.0.9": {"admin"}},
+    )
+
+    kwargs = mock_resolve.call_args_list[0].kwargs
+    assert kwargs["already_rejected"] == {"admin"}
+    assert result.rejected_credentials == {"10.0.0.9": {"admin", "admin2"}}
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
+def test_crawl_does_not_mutate_the_caller_s_rejected_credentials_map(mock_resolve, mock_cdp, mock_lldp):
+    mock_resolve.return_value = ConnectResult(status="auth_failed")
+    caller_map = {"10.0.0.9": {"admin"}}
+
+    crawl([("10.0.0.9", 0)], max_hops=3, credential_sets=[CRED, Credential(username="a2", password="p")],
+          rejected_credentials=caller_map)
+
+    assert caller_map == {"10.0.0.9": {"admin"}}
+
+
+@patch("crawler.crawl.connector.get_lldp_neighbors")
+@patch("crawler.crawl.connector.get_cdp_neighbors")
+@patch("crawler.crawl.connector.resolve_device")
 def test_crawl_catches_keyboard_interrupt_and_returns_partial_results(mock_resolve, mock_cdp, mock_lldp):
     first_facts_result = ConnectResult(status="ok", credential=CRED, facts=_facts("S1", "sw01"), facts_source="restconf")
     mock_resolve.side_effect = [first_facts_result, KeyboardInterrupt()]

@@ -39,8 +39,26 @@ def _get_device_facts(host: str, credential: Credential, hop: int) -> tuple[Devi
         raise DeviceUnreachable(str(e)) from e
 
 
-def resolve_device(host: str, credential_sets: list[Credential], hop: int) -> ConnectResult:
+def resolve_device(
+    host: str,
+    credential_sets: list[Credential],
+    hop: int,
+    already_rejected: set[str] | None = None,
+) -> ConnectResult:
+    """Try each credential set in order until one is accepted.
+
+    `already_rejected` holds usernames this specific host has refused on an
+    earlier pass; they are skipped so an alternate-credential retry never
+    re-submits a known-bad login (avoids tripping AAA lockout policies).
+    """
+    already_rejected = already_rejected or set()
     for credential in credential_sets:
+        if credential.username in already_rejected:
+            logger.debug(
+                "Skipping credential %r for %s — already rejected by this host",
+                credential.username, host,
+            )
+            continue
         try:
             facts, source = _get_device_facts(host, credential, hop)
             return ConnectResult(status="ok", credential=credential, facts=facts, facts_source=source)

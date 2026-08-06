@@ -62,6 +62,32 @@ def test_resolve_device_returns_unreachable_without_trying_remaining_credentials
     assert mock_ssh_facts.call_count == 1  # didn't try CRED2 — unreachable is credential-independent
 
 
+@patch("connectors.cisco.connector.ssh_client.get_device_facts")
+@patch("connectors.cisco.connector.restconf_client.get_device_facts")
+def test_resolve_device_skips_credentials_this_host_already_rejected(mock_restconf_facts, mock_ssh_facts):
+    # CRED1 was already refused by this host on an earlier pass — re-submitting
+    # it risks tripping AAA lockout, so only CRED2 may be tried.
+    mock_restconf_facts.return_value = FACTS
+    result = resolve_device("10.0.0.1", [CRED1, CRED2], hop=0, already_rejected={"admin1"})
+    assert result.status == "ok"
+    assert result.credential == CRED2
+    assert mock_restconf_facts.call_count == 1
+    assert mock_restconf_facts.call_args_list[0].args[1] == CRED2
+    mock_ssh_facts.assert_not_called()
+
+
+@patch("connectors.cisco.connector.ssh_client.get_device_facts")
+@patch("connectors.cisco.connector.restconf_client.get_device_facts")
+def test_resolve_device_returns_auth_failed_without_dialing_when_all_credentials_already_rejected(
+    mock_restconf_facts, mock_ssh_facts,
+):
+    result = resolve_device("10.0.0.1", [CRED1, CRED2], hop=0,
+                             already_rejected={"admin1", "admin2"})
+    assert result.status == "auth_failed"
+    mock_restconf_facts.assert_not_called()
+    mock_ssh_facts.assert_not_called()
+
+
 @patch("connectors.cisco.connector.ssh_client.get_cdp_neighbors")
 @patch("connectors.cisco.connector.restconf_client.get_cdp_neighbors")
 def test_get_cdp_neighbors_falls_back_to_ssh(mock_restconf_cdp, mock_ssh_cdp):

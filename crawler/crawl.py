@@ -1,5 +1,5 @@
 # crawler/crawl.py
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from connectors.cisco import connector
 from connectors.cisco.models import Credential, DeviceFacts, NeighborLink
@@ -12,6 +12,10 @@ class CrawlResult:
     auth_failed: list[tuple[str, int]]
     unreachable: list[tuple[str, int]]
     interrupted: bool = False
+    # host IP -> usernames that host has already rejected. Fed back into a
+    # follow-up crawl() so an alternate-credential retry never re-submits a
+    # login the device already refused (AAA lockout risk).
+    rejected_credentials: dict[str, set[str]] = field(default_factory=dict)
 
 
 def crawl(
@@ -20,12 +24,18 @@ def crawl(
     credential_sets: list[Credential],
     visited: dict[str, DeviceFacts] | None = None,
     links: list[NeighborLink] | None = None,
+    rejected_credentials: dict[str, set[str]] | None = None,
 ) -> CrawlResult:
     visited = dict(visited) if visited else {}
     links = list(links) if links else []
+    rejected = {ip: set(users) for ip, users in (rejected_credentials or {}).items()}
     queue = list(seeds)
     queued_ips = {ip for ip, _ in queue}
-    known_ips = {f.primary_ip4 for f in visited.values() if f.primary_ip4}
+    # Every IP this crawl has dialed (or inherited as already-resolved),
+    # regardless of outcome — a device is contacted at most once per crawl()
+    # call, so auth-failed/unreachable hosts advertised again by a later
+    # neighbor are never re-dialed.
+    attempted_ips = {f.primary_ip4 for f in visited.values() if f.primary_ip4}
     auth_failed: list[tuple[str, int]] = []
     unreachable: list[tuple[str, int]] = []
     interrupted = False
@@ -34,11 +44,17 @@ def crawl(
         try:
             ip, hop = queue.pop(0)
             queued_ips.discard(ip)
-            if hop > max_hops or ip in known_ips:
+            if hop > max_hops or ip in attempted_ips:
                 continue
+            attempted_ips.add(ip)
 
-            result = connector.resolve_device(ip, credential_sets, hop)
+            result = connector.resolve_device(
+                ip, credential_sets, hop, already_rejected=rejected.get(ip, set())
+            )
             if result.status == "auth_failed":
+                # Every credential not already known-bad for this host has now
+                # been tried and refused.
+                rejected[ip] = rejected.get(ip, set()) | {c.username for c in credential_sets}
                 auth_failed.append((ip, hop))
                 continue
             if result.status == "unreachable":
@@ -51,7 +67,6 @@ def crawl(
             facts.custom_fields["discovery_credential_user"] = result.credential.username
             already_known_serial = facts.serial in visited
             visited[facts.serial] = facts
-            known_ips.add(ip)
 
             if already_known_serial:
                 # Same physical device reached via a second management IP
@@ -69,7 +84,7 @@ def crawl(
                 neighbor_ip = link.b_device_ip
                 if (
                     neighbor_ip
-                    and neighbor_ip not in known_ips
+                    and neighbor_ip not in attempted_ips
                     and neighbor_ip not in queued_ips
                     and hop + 1 <= max_hops
                 ):
@@ -85,4 +100,5 @@ def crawl(
     return CrawlResult(
         visited=visited, links=links, auth_failed=auth_failed,
         unreachable=unreachable, interrupted=interrupted,
+        rejected_credentials=rejected,
     )
