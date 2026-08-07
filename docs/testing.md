@@ -105,10 +105,15 @@ The web GUI has automated tests (`tests/webapp/`) covering its routes
 against fake data — this section covers verifying the real container and
 GUI together, which isn't automatable here.
 
-**Note:** this procedure has not yet been executed end-to-end — Docker was
-unavailable in the environment where this was built. Findings #1-#5 from the
-review that led to this note were caught by static review, not by running it;
-please report back if anything else surfaces on a real run.
+**Update:** steps 1-2 have now been run against a real Docker daemon —
+`docker compose build` succeeds, the container starts, and the dashboard,
+`/api/status`, and `/api/runs` all respond correctly on a fresh `output/`
+directory. The `git_commit` fix (finding #1) was also verified directly
+inside the running container: with no `git` binary and no `.git/` present,
+it prints the warning and returns normally instead of crashing. Steps 3-5
+(an actual crawl run watched live through the GUI) remain unverified — they
+require a reachable lab Cisco device and a running Ollama instance, neither
+available in the environment where this was checked.
 
 ### Prerequisites
 
@@ -136,11 +141,11 @@ please report back if anything else surfaces on a real run.
    Follow the same interactive credential prompts as running it locally.
 4. **While it's running**, refresh `http://localhost:5001` (or just watch —
    it polls itself every 2 seconds): confirm the status badge shows
-   "running", the device counter and hop number increase as the crawl
-   progresses (the link counter stays at 0 until the run completes — it's
-   only known once the full result is available, not derivable from live
-   per-device events), and the live log box shows the same lines appearing
-   in your terminal.
+   "running", the device counter increases as the crawl progresses (the
+   link counter stays at 0 until the run completes — it's only known once
+   the full result is available, not derivable from live per-device
+   events), and the live log box shows the same lines appearing in your
+   terminal.
 5. **After it finishes and you confirm the write prompt:** confirm the
    dashboard's status returns to "idle", the new run appears in the Past
    Runs table, and clicking it shows the devices/interfaces/links tables
